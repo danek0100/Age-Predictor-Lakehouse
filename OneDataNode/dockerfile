@@ -1,33 +1,36 @@
-FROM bde2020/spark-worker:3.0.0-hadoop3.2
+FROM python:3.9-slim
 
-RUN apk add --no-cache --virtual .build-deps \
-    wget \
-    build-base \
-    libffi-dev \
-    openssl-dev \
-    bzip2-dev \
-    zlib-dev \
-    xz-dev \
-    readline-dev \
-    sqlite-dev \
-    libgfortran
+# Установка Java
+RUN apt-get update && apt-get install -y \
+    openjdk-11-jdk \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN wget https://www.python.org/ftp/python/3.9.18/Python-3.9.18.tgz && \
-    tar xzf Python-3.9.18.tgz
+# Установка Spark
+ENV SPARK_VERSION=3.0.0
+ENV HADOOP_VERSION=3.2
+ENV SPARK_HOME=/opt/spark
+ENV PATH=$PATH:$SPARK_HOME/bin
 
-RUN cd Python-3.9.18 && \
-    ./configure --enable-optimizations --with-ensurepip=install && \
-    make -j$(nproc) && \
-    make altinstall
+RUN wget https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz \
+    && tar xzf spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz \
+    && mv spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION} ${SPARK_HOME} \
+    && rm spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz
 
-RUN ln -sf /usr/local/bin/python3.9 /usr/bin/python && \
-    ln -sf /usr/local/bin/pip3.9 /usr/bin/pip3
+# Установка Python зависимостей
+RUN pip install --no-cache-dir \
+    numpy==1.21.1 \
+    pandas \
+    tqdm \
+    psutil \
+    matplotlib \
+    requests \
+    pyspark==3.0.0
 
-RUN python3.9 -m venv /opt/venv && \
-    /opt/venv/bin/pip install --upgrade pip setuptools wheel && \
-    /opt/venv/bin/pip install numpy==1.21.1 pandas tqdm psutil matplotlib requests
+# Создание рабочей директории
+WORKDIR /opt/spark-apps
 
-ENV PATH="/opt/venv/bin:$PATH"
+# Копирование конфигурации Spark
+COPY spark-defaults.conf ${SPARK_HOME}/conf/
 
-COPY ./hadoop.env /hadoop.env
-ENV INIT_DAEMON_STEP=setup_spark
+# Запуск Spark в локальном режиме
+CMD ["spark-submit", "--master", "local[*]", "--deploy-mode", "client", "/opt/spark-apps/regularSpark.py"] 

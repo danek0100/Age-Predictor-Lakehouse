@@ -11,8 +11,10 @@ from parsing_args import *
 
 if __name__ == "__main__":
     spark = SparkSession.builder \
-        .appName("RegularSparkApp") \
-        .master(args.spark_url) \
+        .appName("LocalSparkApp") \
+        .config("spark.master", "local[*]") \
+        .config("spark.driver.memory", "4g") \
+        .config("spark.executor.memory", "4g") \
         .getOrCreate()
 
     sc = spark.sparkContext
