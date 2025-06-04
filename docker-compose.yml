@@ -1,0 +1,99 @@
+version: '3.8'
+
+services:
+  # Spark Standalone Master + Worker
+  spark-standalone:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: spark-standalone
+    ports:
+      - "8080:8080"  # Spark Master UI
+      - "4040:4040"  # Spark Application UI
+      - "7077:7077"  # Spark Master
+    volumes:
+      - ./src:/opt/spark-apps/src
+      - ./data:/opt/data
+      - ./notebooks:/opt/notebooks
+      - ./logs:/opt/logs
+    environment:
+      - SPARK_MODE=standalone
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_IP=spark-standalone
+      - SPARK_PUBLIC_DNS=localhost
+      - SPARK_WORKER_MEMORY=4g
+      - SPARK_WORKER_CORES=2
+      - SPARK_MASTER_HOST=spark-standalone
+      - SPARK_MASTER_PORT=7077
+    networks:
+      - spark-network
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+
+  # Jupyter Notebook с поддержкой Spark
+  jupyter:
+    image: jupyter/all-spark-notebook:latest
+    container_name: jupyter-spark
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./notebooks:/home/jovyan/work
+      - ./data:/home/jovyan/data
+      - ./src:/home/jovyan/src
+      - ./data:/opt/data
+    environment:
+      - PYSPARK_DRIVER_PYTHON=jupyter
+      - PYSPARK_DRIVER_PYTHON_OPTS="notebook --NotebookApp.token='' --NotebookApp.password=''"
+    depends_on:
+      - spark-standalone
+    networks:
+      - spark-network
+
+  # MLflow Tracking Server
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.11.1
+    container_name: mlflow-server
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlflow/mlruns:/mlruns
+      - ./mlflow/artifacts:/mlartifacts
+    networks:
+      - spark-network
+
+    entrypoint: ["mlflow"]
+
+    command:
+      - server
+      - --backend-store-uri
+      - sqlite:///mlruns/mlflow.db
+      - --default-artifact-root
+      - /mlartifacts
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "5000"
+
+  # spark-worker:
+  #   image: bitnami/spark:3.5.0
+  #   container_name: spark-worker
+  #   depends_on:
+  #     - spark-standalone
+  #   environment:
+  #     - SPARK_MODE=worker
+  #     - SPARK_MASTER_URL=spark://spark-standalone:7077
+  #     - SPARK_WORKER_MEMORY=2G
+  #     - SPARK_WORKER_CORES=1
+  #   networks:
+  #     - spark-network
+
+networks:
+  spark-network:
+    driver: bridge
+
+volumes:
+  data:
+  logs:
